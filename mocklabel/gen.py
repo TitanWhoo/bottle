@@ -63,10 +63,64 @@ class LabelGenerator:
         self.perspective_probability = config.get('perspective_probability', 0.7)  # 应用透视变换的概率
         self.custom_text = config.get('custom_text', None)  # 自定义文本
         self.label_type = config.get('label_type', 'random')  # 标签类型
+        self.medicine_file = config.get('medicine_file', "medicine.txt")  # 药品名称文件
+        
+        # 从文件加载药品名称
+        self.medicine_names = self._load_medicine_names()
         
         # 创建输出目录
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+    
+    def _load_medicine_names(self) -> List[str]:
+        """
+        从文件加载药品名称
+        
+        Returns:
+            药品名称列表
+        """
+        # 如果文件不存在，使用默认列表
+        if not os.path.exists(self.medicine_file):
+            print(f"警告：药品名称文件 {self.medicine_file} 不存在，使用默认列表")
+            return self.MEDICINE_NAMES
+        
+        try:
+            with open(self.medicine_file, 'r', encoding='utf-8') as f:
+                # 读取非空行
+                names = [line.strip() for line in f if line.strip()]
+            
+            if not names:
+                print(f"警告：药品名称文件 {self.medicine_file} 为空，使用默认列表")
+                return self.MEDICINE_NAMES
+                
+            print(f"已从 {self.medicine_file} 加载 {len(names)} 个药品名称")
+            return names
+        except Exception as e:
+            print(f"读取药品名称文件时出错：{e}，使用默认列表")
+            return self.MEDICINE_NAMES
+    
+    def _add_concentration_to_liquid(self, name: str) -> str:
+        """
+        为含有"液"字的药品名称添加随机浓度
+        
+        Args:
+            name: 药品名称
+            
+        Returns:
+            添加浓度后的药品名称
+        """
+        if "液" in name and random.random() > 0.5:  # 50%的概率添加浓度
+            # 生成随机浓度
+            if random.random() > 0.7:  # 30%的概率使用小数
+                concentration = f"{random.uniform(0.1, 0.9):.1f}%"
+            else:  # 70%的概率使用整数
+                concentration = f"{random.randint(1, 20)}%"
+            
+            # 在药品名称前添加浓度
+            parts = name.split("液", 1)
+            return f"{parts[0]}{concentration}液{parts[1] if len(parts) > 1 else ''}"
+        
+        return name
     
     def generate_label(self, text: str, size: Tuple[int, int], font_size: int, 
                       color: Tuple[int, int, int]) -> Tuple[Optional[Image.Image], List]:
@@ -543,8 +597,9 @@ class LabelGenerator:
     
     def generate_random_text(self) -> str:
         """生成随机组合的文本"""
-        # 随机选择药品名称
-        medicine = random.choice(self.MEDICINE_NAMES)
+        # 随机选择药品名称并可能添加浓度
+        medicine_name = random.choice(self.medicine_names)
+        medicine = self._add_concentration_to_liquid(medicine_name)
         
         # 随机生成其他信息
         batch_number = f"批号: {self.generate_random_batch_number()}"
@@ -660,7 +715,7 @@ class LabelGenerator:
     
     def _detect_label_type(self, text: str) -> str:
         """检测标签类型"""
-        if any(name in text for name in self.MEDICINE_NAMES):
+        if any(name in text for name in self.medicine_names):
             return 'medicine'
         elif any(name in text for name in self.MANUFACTURER_NAMES):
             return 'manufacturer'
@@ -715,6 +770,8 @@ def parse_arguments():
                                 'production_date', 'expiry_date', 'specification', 
                                 'approval', 'speed'],
                         help='标签类型 (默认: random, 随机选择一种类型)')
+    parser.add_argument('--medicine_file', type=str, default="medicine.txt",
+                        help='药品名称文件路径 (默认: medicine.txt)')
     
     return parser.parse_args()
 
