@@ -4,8 +4,8 @@
 """
 数据集标签拆分工具
 
-将数据集标签文件拆分为训练集和验证集，支持自定义拆分比例和输入/输出文件路径。
-默认情况下，将输入文件按指定比例拆分为训练集和验证集。
+将数据集标签文件拆分为训练集、测试集和验证集，支持自定义拆分比例和输入/输出文件路径。
+默认情况下，将输入文件按7:2:1的比例拆分为训练集、测试集和验证集。
 支持追加模式，可以将多个文件的处理结果追加到同一输出文件中。
 """
 
@@ -81,36 +81,51 @@ def write_file(file_path: str, lines: List[str], append: bool = False) -> None:
         raise
 
 
-def split_data(data: List[str], train_ratio: float) -> Tuple[List[str], List[str]]:
+def split_data(data: List[str], train_ratio: float, test_ratio: float, val_ratio: float) -> Tuple[List[str], List[str], List[str]]:
     """
-    将数据拆分为训练集和验证集
+    将数据拆分为训练集、测试集和验证集
     
     Args:
         data: 要拆分的数据列表
         train_ratio: 训练集比例 (0.0-1.0)
+        test_ratio: 测试集比例 (0.0-1.0)
+        val_ratio: 验证集比例 (0.0-1.0)
         
     Returns:
-        训练集和验证集的元组
+        训练集、测试集和验证集的元组
     """
+    # 确保比例之和为1
+    total_ratio = train_ratio + test_ratio + val_ratio
+    if abs(total_ratio - 1.0) > 1e-10:
+        train_ratio /= total_ratio
+        test_ratio /= total_ratio
+        val_ratio /= total_ratio
+    
     # 复制数据并打乱顺序
     shuffled_data = data.copy()
     random.shuffle(shuffled_data)
     
-    # 计算训练集大小
-    train_size = int(len(shuffled_data) * train_ratio)
+    # 计算各集合大小
+    total_size = len(shuffled_data)
+    train_size = int(total_size * train_ratio)
+    test_size = int(total_size * test_ratio)
     
     # 拆分数据
     train_data = shuffled_data[:train_size]
-    val_data = shuffled_data[train_size:]
+    test_data = shuffled_data[train_size:train_size + test_size]
+    val_data = shuffled_data[train_size + test_size:]
     
-    return train_data, val_data
+    return train_data, test_data, val_data
 
 
 def process_file(
     input_file: str, 
     train_output: str, 
+    test_output: str,
     val_output: str, 
     train_ratio: float,
+    test_ratio: float,
+    val_ratio: float,
     seed: Optional[int] = None,
     append: bool = False
 ) -> Dict[str, int]:
@@ -120,8 +135,11 @@ def process_file(
     Args:
         input_file: 输入文件路径
         train_output: 训练集输出文件路径
+        test_output: 测试集输出文件路径
         val_output: 验证集输出文件路径
         train_ratio: 训练集比例 (0.0-1.0)
+        test_ratio: 测试集比例 (0.0-1.0)
+        val_ratio: 验证集比例 (0.0-1.0)
         seed: 随机种子
         append: 是否追加到输出文件，默认为False
         
@@ -137,24 +155,29 @@ def process_file(
     data = read_file(input_file)
     
     # 拆分数据
-    train_data, val_data = split_data(data, train_ratio)
+    train_data, test_data, val_data = split_data(data, train_ratio, test_ratio, val_ratio)
     
     # 写入文件
     write_file(train_output, train_data, append)
+    write_file(test_output, test_data, append)
     write_file(val_output, val_data, append)
     
     # 返回统计信息
     stats = {
         "total": len(data),
         "train": len(train_data),
+        "test": len(test_data),
         "val": len(val_data),
-        "train_ratio": train_ratio
+        "train_ratio": train_ratio,
+        "test_ratio": test_ratio,
+        "val_ratio": val_ratio
     }
     
     logger.info(f"文件 {input_file} 处理完成:")
     logger.info(f"  总行数: {stats['total']}")
     logger.info(f"  训练集: {stats['train']} 行 ({stats['train_ratio']:.2f})")
-    logger.info(f"  验证集: {stats['val']} 行 ({1-stats['train_ratio']:.2f})")
+    logger.info(f"  测试集: {stats['test']} 行 ({stats['test_ratio']:.2f})")
+    logger.info(f"  验证集: {stats['val']} 行 ({stats['val_ratio']:.2f})")
     
     return stats
 
@@ -167,12 +190,18 @@ def main():
     # 添加参数
     parser.add_argument("--label-file", type=str, required=True,
                         help="标签数据文件路径")
-    parser.add_argument("--train-ratio", type=float, default=0.8,
-                        help="训练集比例 (默认: 0.8)")
+    parser.add_argument("--train-ratio", type=float, default=0.7,
+                        help="训练集比例 (默认: 0.7)")
+    parser.add_argument("--test-ratio", type=float, default=0.2,
+                        help="测试集比例 (默认: 0.2)")
+    parser.add_argument("--val-ratio", type=float, default=0.1,
+                        help="验证集比例 (默认: 0.1)")
     parser.add_argument("--output-dir", type=str, default="output/split",
                         help="输出目录 (默认: output/split)")
     parser.add_argument("--train-output", type=str, default="train.txt",
                         help="训练集输出文件名 (默认: train.txt)")
+    parser.add_argument("--test-output", type=str, default="test.txt",
+                        help="测试集输出文件名 (默认: test.txt)")
     parser.add_argument("--val-output", type=str, default="val.txt",
                         help="验证集输出文件名 (默认: val.txt)")
     parser.add_argument("--append", action="store_true",
@@ -192,6 +221,7 @@ def main():
     
     # 设置输出文件路径
     train_output = os.path.join(args.output_dir, args.train_output)
+    test_output = os.path.join(args.output_dir, args.test_output)
     val_output = os.path.join(args.output_dir, args.val_output)
     
     # 创建输出目录
@@ -208,8 +238,11 @@ def main():
         stats = process_file(
             args.label_file, 
             train_output, 
+            test_output,
             val_output, 
             args.train_ratio,
+            args.test_ratio,
+            args.val_ratio,
             args.seed,
             args.append
         )
