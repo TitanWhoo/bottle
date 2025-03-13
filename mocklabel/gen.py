@@ -547,7 +547,7 @@ class LabelGenerator:
     @staticmethod
     def generate_random_batch_number() -> str:
         """生成随机批号"""
-        year = random.randint(22, 24)
+        year = random.randint(10, 99)
         month = random.randint(1, 12)
         batch = random.randint(1000, 9999)
         return f"{year}{month:02d}{batch}"
@@ -555,7 +555,7 @@ class LabelGenerator:
     @staticmethod
     def generate_random_production_date() -> str:
         """生成随机生产日期"""
-        year = random.randint(2022, 2024)
+        year = random.randint(2000, 2999)
         month = random.randint(1, 12)
         day = random.randint(1, 28)
         return f"{year}-{month:02d}-{day:02d}"
@@ -567,19 +567,34 @@ class LabelGenerator:
         year, month, day = map(int, prod_date.split('-'))
         # 有效期通常为2-3年
         expiry_year = year + random.randint(2, 3)
-        return f"{expiry_year}.{month:02d}."
+        return f"{expiry_year}.{month:02d}.{day:02d}."
 
     def generate_random_specification(self) -> str:
         """生成随机规格信息"""
         template = random.choice(self.SPECIFICATION_TEMPLATES)
         if "ml:{}g" in template:
-            return template.format(random.choice([5, 10, 20]), random.choice(["0.84", "1.2", "2.5"]))
+            # 使用随机的毫升数值(1-50)和克数值(0.1-5.0)
+            ml_value = random.randint(1, 50)
+            g_value = round(random.uniform(0.1, 5.0), 2)
+            return template.format(ml_value, g_value)
         elif "ml" in template:
-            return template.format(random.choice([2, 5, 10, 20, 50, 100]))
+            # 使用随机的毫升数值(1-200)
+            ml_value = random.randint(1, 200)
+            return template.format(ml_value)
         elif "mg/支" in template:
-            return template.format(random.choice([50, 100, 250, 500]))
+            # 使用随机的毫克数值(10-1000)
+            mg_value = random.randint(10, 1000)
+            # 对于常见剂量，可能会取整到特定值
+            if random.random() < 0.3:  # 30%的概率取整到常见剂量
+                mg_value = round(mg_value / 50) * 50  # 取整到最接近的50的倍数
+            return template.format(mg_value)
         else:  # g/瓶
-            return template.format(random.choice(["0.5", "1", "2.5"]))
+            # 使用随机的克数值(0.1-10.0)
+            if random.random() < 0.7:  # 70%的概率使用小数
+                g_value = round(random.uniform(0.1, 10.0), random.choice([1, 2]))  # 随机保留1或2位小数
+            else:  # 30%的概率使用整数
+                g_value = random.randint(1, 10)
+            return template.format(g_value)
 
     @staticmethod
     def generate_random_approval_number() -> str:
@@ -590,10 +605,30 @@ class LabelGenerator:
 
     @staticmethod
     def generate_random_speed() -> str:
-        """生成随机速度信息"""
-        ml = random.choice(["1-2", "2-5", "5-10"])
-        speed = random.randint(5, 10)
-        return f"{ml}ml {speed}/{speed+0.5}万支/h"
+        """生成随机数字信息"""
+        # 生成随机的毫升范围
+        if random.random() < 0.6:  # 60%的概率使用范围表示
+            min_ml = random.randint(1, 15)
+            max_ml = min_ml + random.randint(1, 10)
+            ml = f"{min_ml}-{max_ml}"
+        else:  # 40%的概率使用单一数值
+            ml = str(random.randint(1, 20))
+        
+        # 生成随机的速度值
+        base_speed = random.uniform(1.0, 20.0)
+        
+        # 决定速度的表示方式
+        if random.random() < 0.7:  # 70%的概率使用整数+小数
+            speed1 = int(base_speed)
+            speed2 = round(base_speed + random.uniform(0.1, 1.0), 1)  # 增加0.1-1.0之间的随机值
+        else:  # 30%的概率使用两个整数
+            speed1 = int(base_speed)
+            speed2 = speed1 + random.randint(1, 3)
+        
+        # 决定单位
+        unit = random.choice(["万支/h", "万支/小时", "万/h"])
+        
+        return f"{ml}ml {speed1}/{speed2}{unit}"
     
     def generate_random_text(self) -> str:
         """生成随机组合的文本"""
